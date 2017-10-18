@@ -19,6 +19,11 @@ class TweetTrain:
         self.negative_tweets = None
         self.tweets_vectors = None
         self.labels = None
+        self.x_train = None
+        self.y_train = None
+        self.x_test = None
+        self.y_test = None
+        self.model = None
 
     def get_stem(self, token):
         stem = self.cache_stems.get(token, None)
@@ -42,7 +47,7 @@ class TweetTrain:
         self.vocabulary = {vocabulary_sort[i] : i for i in range(self.vocabulary_size)}
 
     def tweet_to_vector(self, tweet):
-        vector = numpy.zeros(self.vocabulary_size, dtype=numpy.int_)
+        vector = numpy.zeros(self.vocabulary_size, dtype=numpy.byte)
         tokenizer = TweetTokenizer()
         for token in tokenizer.tokenize(tweet):
             stem = self.get_stem(token)
@@ -67,7 +72,7 @@ class TweetTrain:
         print('Словарь создан')
 
         self.tweets_vectors = numpy.zeros((len(self.negative_tweets) + len(self.positive_tweets), self.vocabulary_size),
-                                     dtype=numpy.int_)
+                                     dtype=numpy.byte)
         print('Создаем вектор из негативных постов')
         for i, tweet in enumerate(self.negative_tweets):
             self.tweets_vectors[i] = self.tweet_to_vector(tweet)
@@ -75,9 +80,9 @@ class TweetTrain:
         print('Создаем вектор из позитивных постов')
         for i, tweet in enumerate(self.positive_tweets):
             self.tweets_vectors[i + len(self.negative_tweets)] = self.tweet_to_vector(tweet)
+        self.labels = numpy.append(numpy.zeros(len(self.negative_tweets), dtype=numpy.byte),
+                                   numpy.ones(len(self.positive_tweets), dtype=numpy.byte))
         print('Подготовка завешена')
-        self.labels = numpy.append(numpy.zeros(len(self.negative_tweets), dtype=numpy.int_),
-                                   numpy.ones(len(self.positive_tweets), dtype=numpy.int_))
 
     def build_model(self, learning_rate=0.1):
         tensorflow.reset_default_graph()
@@ -89,13 +94,27 @@ class TweetTrain:
         tflearn.regression(net, optimizer='sgd', learning_rate=learning_rate)
         return tflearn.DNN(net)
 
-    def train(self):
+    def create_train_test_data(self):
         x = self.tweets_vectors
         y = to_categorical(self.labels, 2)
-        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3)
-        model = self.build_model(0.75)
-        model.fit(x_train, y_train, validation_set=0.1, show_metric=True, batch_size=128, n_epoch=30)
+        self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(x, y, test_size=0.3)
 
+    def train(self):
+        self.model = self.build_model(0.75)
+        self.model.fit(self.x_train, self.y_train, validation_set=0.1, show_metric=True, batch_size=128, n_epoch=30)
+        self.model.save('model.tflearn')
+
+    def load_model(self):
+        self.model = self.build_model(0.75)
+        self.model.load('model.tflearn')
+
+    def test_model(self):
+        if self.model is None:
+            self.load_model()
+        predictions = (numpy.array(self.model.predict(self.x_test))[:, 0] >= 0.5).astype(numpy.byte)
+        accuracy = numpy.mean(predictions == self.y_test[:, 0], axis=0)
+        print("Точность:", accuracy)
 
 if __name__ == '__main__':
-    TweetTrain(debug=True).train('data/positive_clear.txt', 'data/negative_clear.txt')
+    foo = TweetTrain()
+    foo.prepare_data('data/positive_clear.txt', 'data/negative_clear.txt')
