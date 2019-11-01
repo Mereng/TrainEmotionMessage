@@ -17,4 +17,4 @@ sklearn==0.0
 tensorflow-gpu==1.3.0
 tensorflow-tensorboard==0.1.8
 tflearn==0.3.2
-Werkzeug==0.12.2
+Werkzeug==0.15.3
